@@ -1,5 +1,7 @@
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(
+  75, window.innerWidth / window.innerHeight, 0.1, 1000
+);
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById('bg'),
   alpha: true,
@@ -8,85 +10,102 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 
-// Torus knot shape
+camera.position.z = 40;
+
+const group = new THREE.Group();
+scene.add(group);
+
+// Main shape
 const geometry = new THREE.TorusKnotGeometry(10, 3, 100, 16);
 const material = new THREE.MeshStandardMaterial({
   color: 0x00ffff,
   wireframe: true
 });
 const torusKnot = new THREE.Mesh(geometry, material);
-scene.add(torusKnot);
+group.add(torusKnot);
 
-// Lighting
-const pointLight = new THREE.PointLight(0xffffff);
-pointLight.position.set(20, 20, 20);
-scene.add(pointLight);
+// Fragments
+const fragments = [];
+for (let i = 0; i < 12; i++) {
+  const frag = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1, 0),
+    new THREE.MeshStandardMaterial({ color: 0xff00ff, wireframe: true })
+  );
+  frag.position.set(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5);
+  frag.visible = false;
+  scene.add(frag);
+  fragments.push(frag);
+}
 
-camera.position.z = 30;
+// Light
+const light = new THREE.PointLight(0xffffff);
+light.position.set(30, 30, 30);
+scene.add(light);
 
-// Interaction state
+// Interaction
 let isDragging = false;
-let previousMousePosition = { x: 0, y: 0 };
+let prev = { x: 0, y: 0 };
 
-// Mouse events
-renderer.domElement.addEventListener('mousedown', () => {
+function dragStart(x, y) {
   isDragging = true;
-});
-renderer.domElement.addEventListener('mouseup', () => {
-  isDragging = false;
-});
-renderer.domElement.addEventListener('mousemove', (event) => {
-  if (!isDragging) return;
-  const deltaX = event.clientX - previousMousePosition.x;
-  const deltaY = event.clientY - previousMousePosition.y;
-  torusKnot.rotation.y += deltaX * 0.01;
-  torusKnot.rotation.x += deltaY * 0.01;
-  previousMousePosition = { x: event.clientX, y: event.clientY };
-});
-renderer.domElement.addEventListener('mouseleave', () => {
-  isDragging = false;
-});
-renderer.domElement.addEventListener('mouseenter', (event) => {
-  previousMousePosition = { x: event.clientX, y: event.clientY };
-});
+  prev.x = x;
+  prev.y = y;
 
-// Touch events
-renderer.domElement.addEventListener('touchstart', (e) => {
-  isDragging = true;
-  previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-});
-renderer.domElement.addEventListener('touchend', () => {
-  isDragging = false;
-});
-renderer.domElement.addEventListener('touchmove', (e) => {
+  // trigger falling fragments
+  fragments.forEach((f, i) => {
+    f.visible = true;
+    f.velocity = {
+      x: (Math.random() - 0.5) * 0.5,
+      y: (Math.random() - 0.5) * 0.5,
+      z: (Math.random() - 0.5) * 0.5
+    };
+  });
+}
+
+function dragMove(x, y) {
   if (!isDragging) return;
-  const touch = e.touches[0];
-  const deltaX = touch.clientX - previousMousePosition.x;
-  const deltaY = touch.clientY - previousMousePosition.y;
-  torusKnot.rotation.y += deltaX * 0.01;
-  torusKnot.rotation.x += deltaY * 0.01;
-  previousMousePosition = { x: touch.clientX, y: touch.clientY };
+  const dx = x - prev.x;
+  const dy = y - prev.y;
+  group.rotation.y += dx * 0.01;
+  group.rotation.x += dy * 0.01;
+  prev.x = x;
+  prev.y = y;
+}
+
+function dragEnd() {
+  isDragging = false;
+}
+
+renderer.domElement.addEventListener('mousedown', e => dragStart(e.clientX, e.clientY));
+renderer.domElement.addEventListener('mousemove', e => dragMove(e.clientX, e.clientY));
+renderer.domElement.addEventListener('mouseup', dragEnd);
+
+renderer.domElement.addEventListener('touchstart', e => {
+  if (e.touches.length > 0) dragStart(e.touches[0].clientX, e.touches[0].clientY);
 });
+renderer.domElement.addEventListener('touchmove', e => {
+  if (e.touches.length > 0) dragMove(e.touches[0].clientX, e.touches[0].clientY);
+});
+renderer.domElement.addEventListener('touchend', dragEnd);
 
 function animate() {
   requestAnimationFrame(animate);
-  torusKnot.rotation.z += 0.002;
+
+  // Animate fragments
+  fragments.forEach(f => {
+    if (!f.visible) return;
+    f.position.x += f.velocity.x;
+    f.position.y += f.velocity.y;
+    f.position.z += f.velocity.z;
+    f.rotation.x += 0.02;
+    f.rotation.y += 0.02;
+  });
+
   renderer.render(scene, camera);
 }
+
 animate();
 
-// Scroll animations
-const reveals = document.querySelectorAll('.reveal');
-window.addEventListener('scroll', () => {
-  for (let el of reveals) {
-    const rect = el.getBoundingClientRect();
-    if (rect.top < window.innerHeight * 0.8) {
-      el.classList.add('visible');
-    }
-  }
-});
-
-// Resize support
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
